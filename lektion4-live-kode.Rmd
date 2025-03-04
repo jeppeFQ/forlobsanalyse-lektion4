@@ -1,0 +1,49 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+load("//Volumes//oecon-forloeb24//Råfiler//forlob_06032023.rda")
+```
+
+```{r}
+library(tidyverse)
+
+region <- 
+  df5 %>% 
+  select(pnr, age, region) %>% 
+  filter(age == 18) %>% 
+  rename(region18 = region) %>% 
+  select(-age)
+
+```
+
+```{r}
+
+df <- 
+  df5 %>% 
+  left_join(region, by = "pnr") %>% 
+  mutate(person_start = if_else(lag(pnr) == pnr, 0, 1)) %>% 
+  mutate(person_slut = if_else(lead(pnr) == pnr, 0, 1)) %>% 
+  mutate(event = if_else(lag(C_ANTBOERNF) == 0 & 
+                           C_ANTBOERNF == 1 & 
+                           person_start == 0, 1, 0)) %>% 
+  mutate(periode_slut = if_else(event == 1 | 
+                                  C_ANTBOERNF == 0 & 
+                                  person_slut == 1, 1, 0)) %>% 
+  group_by(pnr) %>% 
+  slice(1:which.max(periode_slut == 1)) %>% 
+  ungroup()
+
+
+```
+
+
+```{r}
+
+
+
+```
+
+

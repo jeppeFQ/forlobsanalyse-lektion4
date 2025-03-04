@@ -1,0 +1,45 @@
+---
+title: "At joine data"
+format: html
+editor: visual
+---
+
+# Datamanagement til dagens øvelser
+
+```{r}
+library(tidyverse)
+```
+
+## Data-tibble (numeriske variable)
+
+```{r, message=FALSE}
+data <- tibble(id = c(1,1,1,1,2,2,2,3,3,3,3,4,4,4,5,5,5,6,6,6,6,6), 
+               tid = c(1,2,3,4,1,2,3,1,2,3,4,1,2,3,1,2,3,1,2,3,4,5),
+               kvinde = c(0,0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,1,1,1), 
+               iarb = c(1,0,0,1,0,1,0,1,0,1,1,0,1,0,1,0,1,1,1,0,0,0))
+```
+
+## Illustration af lag() og lead()
+
+kommandoerne lag() og lead() kan bruges til at 'kalde' oplysninger fra henholdsvis før og efter en given observationsrække
+
+### konstruktion af en indikatorvariabel for hvornår personen starter i data
+
+```{r, message=FALSE}
+data2 <- mutate(data, person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1))
+```
+
+## Data-tibble (character variable)
+
+```{r, message=FALSE}
+data3 <- tibble(id = c(1,2,3,4,5,6), 
+               land = c("Holland","Danmark", "Danmark", "Tyskland", "Holland", "Norge"))
+```
+
+## join-kommandoen - Kombination af de to datasæt
+
+```{r, message=FALSE}
+data_kombi <- left_join(data2, data3, by = "id")
+```
+
+Dette kan også beskrives som "one-to-many merge". Informationen fra data3 bliver "sat" på alle observationer i data2 med det samme løbenummer (id) - Id-numre, der kun eksisterer i data3 kommer ikke med i data_kombi

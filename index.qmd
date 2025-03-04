@@ -1,0 +1,1015 @@
+---
+title: "Event History Analysis II --- Cox proportional hazard regression"
+encoding: "UTF-8"
+execute:
+  echo: false
+format:
+  revealjs:
+    slide-number: c
+    show-slide-number: print
+    embed-resources: true
+    self-contained-math: true
+    smaller: true
+    scrollable: true
+    theme: dark 
+    html-math-method:
+      method: mathjax
+      url: "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/latest.js?config=TeX-MML-AM_CHTML"
+    footer: "Jeppe F. Larsen | 6. marts 2025"
+---
+
+```{r}
+figur_tekst_str = 15
+```
+
+## Dagen program
+
+- Øvelsen til forelæsning 3. 
+
+- Data og data management
+
+- Cox-regression 
+
+- Analyse i praksis 
+
+- Øvelse
+
+
+<script>
+// Object to track the state and interval for each timer
+let timers = {};
+
+// Function to start or stop a timer by ID
+function toggleTimer(timerId) {
+  if (!timers[timerId] || !timers[timerId].running) {
+    startTimer(timerId);
+  } else {
+    stopTimer(timerId);
+  }
+}
+
+// Start the countdown for a specific timer by ID
+function startTimer(timerId) {
+  const timerElement = document.getElementById(timerId);
+
+  // Get the initial duration from the data-duration attribute, or default to 180 seconds
+  const initialDuration = parseInt(timerElement.getAttribute('data-duration'), 10) || 180;
+
+  // Initialize the timer if it hasn't been already
+  if (!timers[timerId]) {
+    timers[timerId] = { remainingTime: initialDuration, running: false, interval: null };
+  } else {
+    // Reset remainingTime to the initial duration if the timer is being restarted
+    timers[timerId].remainingTime = initialDuration;
+  }
+
+  timers[timerId].running = true;
+
+  const display = document.getElementById(timerId);
+  timers[timerId].interval = setInterval(function () {
+    let minutes = parseInt(timers[timerId].remainingTime / 60, 10);
+    let seconds = parseInt(timers[timerId].remainingTime % 60, 10);
+
+    minutes = minutes < 10 ? "0" + minutes : minutes;
+    seconds = seconds < 10 ? "0" + seconds : seconds;
+
+    display.textContent = minutes + ":" + seconds;
+
+    if (--timers[timerId].remainingTime < 0) {
+      clearInterval(timers[timerId].interval);
+      display.textContent = "Time's up!";
+      timers[timerId].running = false;
+      timers[timerId].remainingTime = initialDuration; // Reset timer after it ends
+    }
+  }, 1000);
+}
+
+// Stop the countdown for a specific timer by ID
+function stopTimer(timerId) {
+  if (timers[timerId] && timers[timerId].interval) {
+    clearInterval(timers[timerId].interval);
+    timers[timerId].running = false;
+    document.getElementById(timerId).textContent = "Tid stoppet";
+  }
+}
+</script>
+
+## Forventet udbytte
+
+::: {.columns} 
+<!--  ------------------------------------------->
+::: {.column width="60%"}
+### *Viden*
+
+-   Cox-regressionen og dens forudsætninger. 
+-   Cox-regressionens fordele (og ulemper).
+
+### *Færdigheder*
+
+-   Kodning af tidsvarierende variable til tidskonstante variable.
+-   Grafisk præsentation af resultater fra en cox-regression.
+
+:::
+
+::: {.column width="40%"}
+### *Kompetancer*
+
+-   Analyse af Cox-regression i R.
+
+:::
+<!--  ------------------------------------------->
+:::
+
+# `Subject-Period file` og `single-episode file` 
+
+Hvor vi sidste gang arbejde med en `single-episode file`, arbejder vi i konteksten af  **regressionsanalyse med mikrodata**, ofte med en `Subject-Period file` --- dvs. en fil, hvor hvert individ fremgår flere gange over tid.
+
+## Konstruktion af `event file`
+
+Den centrale kode-mæssige udfordring er at konstruere `event` variablen. 
+
+<div id="countdown-timer-1" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  03:00
+</div>
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "klik for at se koden"
+library(tidyverse)
+library(readxl)
+library(gt)
+
+read_excel("eksempel_data.xlsx") %>% 
+  gt(groupname_col = "grp") %>% 
+  tab_header(
+    title = "'Rå' data",
+    subtitle = glue::glue("Fiktive data")
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none")
+
+```
+
+## Konstruktion af `event file`
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "klik for at se koden"
+library(tidyverse)
+library(readxl)
+library(gt)
+
+read_excel("eksempel_data.xlsx") %>% 
+  gt(groupname_col = "grp") %>% 
+  tab_header(
+    title = "'Rå' data",
+    subtitle = glue::glue("Fiktive data")
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "pink")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 0 & børn == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 1 & børn == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "steelblue")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 0 & år == 2007
+    )
+  ) %>% 
+  opt_table_lines("none")
+
+```
+
+
+## Konstruktion af `event file`: Et eksempel
+
+Funktionerne `lag()` og `lead()` er centrale, når vi skal konstruere vores `event` variabel. Disse funktioner bruges til at hente data fra henholdsvis den foregående og den efterfølgende (observations)række i vores `dataframe`. Altså, `lag()` og `lead()` bruges til at "kalde" oplysninger fra henholdsvis før og efter en given observationsrække. 
+
+> Spg.: *Hvordan løser det vores "problem" med at skabe vores event indikator?*
+
+<div id="countdown-timer-2" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  02:00
+</div>
+
+---
+
+**Indikator for** *startstidspunktet* **per person**:
+
+```{.r code-line-numbers="7"}
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1))
+
+```
+
+```{r}
+#| echo: false
+#| include: true
+
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1))
+
+df.lagged %>% 
+  gt(groupname_col = "grp") %>% 
+  tab_header(
+    title = "Konstruér starttidspunkt i forløbet",
+    subtitle = "Fiktive data"
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none") %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = person_start
+    )
+  ) 
+
+```
+
+---
+
+**Indikator for** *sluttidspunktet* **per person**:
+
+```{.r code-line-numbers="8"}
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1))
+```
+
+```{r}
+#| echo: false
+#| include: true
+
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1))
+
+df.lagged %>% 
+  gt(groupname_col = "grp") %>% 
+  tab_header(
+    title = "Konstruér starttidspunkt i forløbet",
+    subtitle = "Fiktive data"
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none") %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = person_slut
+    )
+  ) 
+
+```
+
+
+---
+
+**Hvis vi nu vil definere begivenheden "fødsel af første barn" er udfordringen at "lokalisere" der hvor kvinden går fra 0 børn til 1 barn.**
+
+Jeg bruger her både `case_when()` og `if_else()` for illustrationen til begge funktinoer. 
+
+```{.r code-line-numbers="9-11"}
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by() %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0)) %>% 
+  ungroup()
+
+```
+
+```{r}
+#| echo: false
+#| include: true
+
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by() %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0)) %>% 
+  ungroup()
+
+df.lagged %>% 
+  gt(groupname_col = "grp") %>% 
+  tab_header(
+    title = "Konstruér indikator for begivenhed",
+    subtitle = "Fiktive data"
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none") %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = c(person_start, person_slut)
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "steelblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "lightblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed,
+      rows = event == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "pink")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 1
+    )
+  )
+
+```
+
+---
+
+
+```{.r code-line-numbers="9,11,12,13"}
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1),
+         person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by(id) %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0),
+         periode_slut = case_when(begivenhed == 1 | børn == 0 & person_slut == 1 ~ 1, TRUE ~ 0)) %>% 
+  slice(1:which.max(periode_slut == 1)) %>% 
+  ungroup() 
+```
+
+```{r}
+#| echo: false
+#| include: true
+
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1),
+         person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by(id) %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0),
+         periode_slut = case_when(begivenhed == 1 | børn == 0 & person_slut == 1 ~ 1, TRUE ~ 0)) %>% 
+  slice(1:which.max(periode_slut == 1)) %>% 
+  ungroup() 
+
+df.lagged %>% 
+  gt(groupname_col = "grp") %>% 
+  tab_header(
+    title = "Konstruér subject-period file",
+    subtitle = "Fiktive data"
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none") %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = c(person_start, person_slut)
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "steelblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "lightblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed,
+      rows = event == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "pink")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgreen")
+      ),
+    locations = cells_body(
+      columns = periode_slut,
+      rows = periode_slut == 1 
+    )
+  )
+
+```
+
+---
+
+Herfra er en `Single-episode file` ligefrem at konstruere, ved: 
+
+```{.r code-line-numbers="11,13"}
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by(id) %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0)) %>% 
+  mutate(periode_slut = case_when(begivenhed == 1 | børn == 0 & person_slut == 1 ~ 1, TRUE ~ 0)) %>% 
+  ungroup() %>% 
+  filter(periode_slut == 1)
+
+```
+
+```{r}
+#| echo: false
+#| include: true
+
+library(tidyverse)
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by(id) %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0)) %>% 
+  mutate(periode_slut = case_when(begivenhed == 1 | børn == 0 & person_slut == 1 ~ 1, TRUE ~ 0)) %>% 
+  ungroup() %>% 
+  filter(periode_slut == 1)
+
+df.lagged %>% 
+  gt() %>% 
+  tab_header(
+    title = "Konstruér single-episode file",
+    subtitle = "Fiktive data"
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none") %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = c(person_start, person_slut, periode_slut)
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "steelblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "lightblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed,
+      rows = event == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "pink")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 1
+    )
+  )
+
+```
+
+## Konstruktion af `event file`
+
+Hvad så med en `Single-episode file` i stil med `First_child.rda`. Hvad er fordele og begrænsninger ved denne? 
+
+<div id="countdown-timer-3" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  05:00
+</div>
+
+```{r}
+#| echo: true
+#| code-fold: true
+#| code-summary: "klik for at se koden"
+
+df.rå <- read_excel("eksempel_data.xlsx")
+
+
+df.lagged <- 
+  df.rå %>% 
+  mutate(person_start = case_when(lag(id) == id ~ 0, TRUE ~ 1)) %>% 
+  mutate(person_slut = case_when(lead(id) == id ~ 0, TRUE ~ 1)) %>% 
+  group_by(id) %>% 
+  mutate(begivenhed = if_else(lag(børn) == 0 & børn == 1 & person_start == 0, 1, 0)) %>% 
+  mutate(periode_slut = case_when(begivenhed == 1 | børn == 0 & person_slut == 1 ~ 1, TRUE ~ 0)) %>% 
+  ungroup() %>% 
+  filter(periode_slut == 1)
+
+
+df.lagged %>% 
+  gt() %>% 
+  tab_header(
+    title = "Konstruér single-episode file",
+    subtitle = "Fiktive data"
+  ) %>% 
+  tab_options(table.width = pct(40),
+              table.font.size = figur_tekst_str) %>% 
+  opt_table_lines("none") %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "wheat")
+      ),
+    locations = cells_body(
+      columns = c(person_start, person_slut, periode_slut)
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "steelblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "lightblue")
+      ),
+    locations = cells_body(
+      columns = begivenhed,
+      rows = event == 1
+    )
+  ) %>% 
+  tab_style(
+    style = list(
+      cell_fill(color = "pink")
+      ),
+    locations = cells_body(
+      columns = event,
+      rows = event == 1
+    )
+  )
+
+
+```
+
+
+# Cox proportional hazard model
+
+## `Cox PH`: relevans og popularitet
+
+- Cox PH-modellen er `semi-parametrisk`, hvilket betyder, at vi ikke behøver at specificere den underliggende sandsynlighedstæthedsfunktion (**pdf**) for hændelsestiden. (Genbesøg noter og slides til lektion 2, for introduktion til relevante **pdf**.) Dette gør modellen fleksibel, da vi kun estimerer effekten af **kovariaterne på hazardraten**, mens **baseline hazard** forbliver ukendt.
+
+- Modellen er **robust** og kan anvendes til data. Uanset om den underliggende fordeling for hændelsestiderne er Weibull, eksponentiel, lognormal eller en anden form, vil Cox-modellen give gode **approksimationer**, så længe **den proportionale hazard-antagelse er opfyldt**.
+
+  - En væsentlig **forudsætning for modellen** er, at hazardraten for de forskellige grupper er proportionale over tid. Denne antagelse skal testes, da overtrædelser kan påvirke modellens anvendelighed.
+
+- En af de primøre fordele ved Cox-modellen er, at den nemt kan udvides til at inkludere **tidsvarierende kovariater**.
+
+## Cox proportional hazard model med `fixed` covariater. 
+
+For den $i$'te person til tiden $t$ specificeres hazardfunktionen som:
+
+$$
+h_{i}(t)=h_{0}(t) \times \exp(\beta_{1} x_{1} + \dots + \beta_{k} x_{k})
+$$
+
+::: {style="font-size: 75%;"}
+
+hvor, 
+
+- $h_{0}(t)$ (**baseline hazard**) angiver den underliggende risiko ved tid tt for en referenceperson, dvs. for en person med $x_{1,i} = x_{2,i} = \dots = x_{k,i} = 0$. $h_{0}(t)$ specificeres ikke *a priori*, hvilket betyder, at vi ikke antager nogen konkret form for dens fordeling. 
+
+- $\exp(\beta_{1} x_{1} + \dots + \beta_{k} x_{k})$ er den **multiplicative effekt** af de $k$ covariater på hazardraten.
+
+- Bemærk at der ikke er noget egentlig `intercept`, da den faste effekt, som et intercept normalt ville repræsentere, er integreret i $h_{0}(t)$. Ved estimering (via *partial likelihood*) udtrækkes koefficienterne $\beta$, mens $h_{0}(t)$ forbliver uspecificeret.
+
+:::
+
+## Cox proportional hazard model med `fixed` covariater. 
+
+For den $i$'te person til tiden $t$ specificeres hazardfunktionen som:
+
+$$
+h_{i}(t)=h_{0}(t) \times \exp(\beta_{1} x_{1} + \dots + \beta_{k} x_{k})
+$$
+
+Dermed kan vi udtrykke hazardfunktionen for en covariatvektor $\mathbf{X}$ som:
+
+$$
+h(t|\mathbf{X}) = h_{0}(t) \exp(\beta^{T}\mathbf{X})
+$$
+
+
+## Cox proportional hazard model med `fixed` covariater. Sammenligning af grupper. 
+
+Med afsæt i data fra sidste øvelse, `First_child.rda`, antager vi, at vi har en gruppeindikator $x$, som defineres som en dummyvariabel:
+
+$$
+x = 
+\left\{\begin{matrix}
+0, \: \text{hvis personen tilhører referencegruppen} \:\:\:\:\:\:\:\:
+\\ 
+1, \: \text{hvis personen ikke tilhører referencegruppen}
+\end{matrix}\right.
+$$
+
+For personer i referencegruppen ($x=0$):
+
+$$
+h_{i}(t)=h_{0}(t) \times \exp(\beta \times 0) = h_{0}(t)
+$$
+
+For personer i den sammenlignede gruppe ($x=1$):
+
+$$
+h_{i}(t)=h_{0}(t) \times \exp(\beta \times 1) = h_{0}(t) \times \exp(\beta)
+$$
+
+## Cox proportional hazard model med `fixed` covariater. `Hazard-ratioen`
+
+Hazard-ratioen (*HR*) udtrykker forholdet mellem hazardfunktionen for en person uden for referencegruppen og en person i referencegruppen:
+
+$$
+\require{cancel}
+HR = 
+\frac{h_{i}(t)}{h_{j}(t)} = \frac{ h_{0}(t) \times \text{exp}(\beta)}{h_{0}(t)} = \frac{ \cancel{h_{0}(t)}  \times \text{exp}(\beta)}{\cancel{h_{0}(t)}} = \text{exp}(\beta)
+$$
+
+::: {style="font-size: 75%;"}
+
+Konceptuelt svarer *HR* til Odds Ratio (*OR*) i logistisk regression, idet den udtrykker den relative ændring i hazardraten mellem grupper:
+
+- Hvis ***HR*** er $=1$ har personen uden for referencegruppen **samme** hazard-rate som personen i referencegruppen.
+
+- Hvis ***HR*** er $<1$ har personen uden for referencegruppen en **lavere** hazard-rate end personen i referencegruppen.
+
+- Hvis ***HR*** er $>1$ har ersonen uden for referencegruppen en **højere** hazard-rate end personen i referencegruppen.
+
+:::
+
+## Den `proportionale` hazard model 
+
+Fordi $h_{0}(t)$ bliver ophævet i tæller og nævner, gælder det at **hazardrater mellem to personer ved samme tid er uafhængig af selve tiden**. Det skyldes, at baseline hazardfunktionen $h_{0}(t)$ ophæves, når vi danner forholdet (hazard-ratioen) mellem to individer. **Dermed er hazard-ratioen udelukkende bestemt af de eksponentierede kovariat-effekter og antages at være konstant over tid**.
+
+```{r, fig.align="center"}
+x <- 1:10
+y <- 2*x + 3  
+data <- data.frame(x = x, y = y)
+
+# Create the plot
+ggplot(data, aes(x = x, y = y)) +
+  geom_hline(yintercept = 15, color = "red") +
+  labs(x = expression("Tid" ~ italic(t)), 
+       y = " ", 
+       title = expression("Konstant hazard," ~ italic(lambda))
+  ) +
+  scale_x_continuous(breaks = c(1:10), labels = c("", "", "", "", "", "", "", "", "", "")) +
+  scale_y_continuous(breaks = c(14, 15, 16), labels = c("", expression(italic(lambda)), "")) +
+  
+  theme_classic()
+```
+
+## Den `proportionale` hazard model 
+
+Fordi hazard-ratioen (*HR*) mellem to personer er konstant over tid, gælder det at: 
+
+$$
+\hat{HR} = 
+\frac{h_{i}(t)}{h_{j}(t)} = \theta
+$$
+hvor $\theta$ er en konstant, der udelukkende bestemmes af de eksponentierede kovariateffekter.
+
+## Den `proportionale` hazard model 
+
+Beskrevet andeledes: alle starter med den samme "basisrisiko" for at blive ramt af en begivenhed. Når vi sammenligner to personer, ser vi kun på, hvordan deres individuelle egenskaber gør, at deres risikoer afviger fra denne "basisrisiko" – og det **forhold** (hazard-ratioen) er **konstant over tid**. 
+
+Fx: *Gruppe 1 har en højere risiko; og denne risiko er* $n$ *højere end gruppe 2 over* hele *forløbet.*
+
+<div id="countdown-timer-5" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  03:00
+</div>
+
+## `adjusted` overlevelseskurver 
+
+Den centrale interesse er fortsat på at estimere **overlevelseskurven**, $S(t)$. Som I ved fra de forrige lektioner er der en relation mellem $S(t)$ og $h(t)$ (genlæs noter eller slide til lektion 2+3).
+
+Når vi inkluderer individuelle karakteristika (covariater) i analysen, udtrykker vi hazardfunktionen for en person med covariatvektoren $\mathbf{X}$ som:
+$$
+h(t, \mathbf{X}) = h_{j}(t) \times \text{exp}(\mathbf{X}\beta)
+$$
+
+hvor 
+
+- $h_{j}(t)$ er baseline hazard: den risiko, der gælder for referencegruppen 
+
+- $\text{exp}(\mathbf{X}\beta)$ beskriver, hvordan de enkelte covariater ændrer denne risiko.
+
+## `adjusted` overlevelseskurver 
+
+Dette giver os en "kontrolleret" overlevelsesfunktion, som **justeres for covariaterne**:
+
+$$
+\hat{S}(t, \mathbf{X}) = \hat{S}(t)^{\exp(\mathbf{X}\hat{\beta})}
+$$ 
+
+$\hat{S}(t)$ er den "kontrollerede" $S(t)$, der bestemmer overlevelsesforløbet for en person med specifikke karakteristika, hvor effekten af disse karakteristika er "kontrolleret" for.
+
+## Cox i praksis: baseret på `flytte.csv`.
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+str(df)
+```
+
+## Cox i praksis
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+cox.m1 <- coxph(Surv(dur, status) ~ udd + factor(aargang), method = "efron", data = df)
+
+cox.m1
+```
+
+**Hvad betyder proportionalitet ift. dette output?**
+
+::: {.incremental}
+
+- Vi kommer senere til at se nærmere på hvordan vi tester antagelsen om proportionalitet. 
+
+:::
+
+## Cox i praksis: faktor variable og `ratios`
+
+**Hvorfor vil vi gerne have kategorien med den største risiko som reference**?
+
+<div id="countdown-timer-6" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  02:00
+</div>
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+cox.m1 <- coxph(Surv(dur, status) ~ fct_rev(factor(udd)) + fct_rev(factor(aargang)), method = "efron", data = df)
+
+cox.m1
+```
+
+## Cox i praksis
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+cox.m1 <- coxph(Surv(dur, status) ~ udd + aargang, method = "efron", data = df)
+
+cox.m1 %>% 
+  survfit2() %>%
+  ggsurvfit() +
+  add_confidence_interval()
+```
+
+## Cox i praksis 
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+km.m1 <- survfit(Surv(dur, status) ~ 1, type = "kaplan-meier", data = df)
+
+km.m1 %>% 
+  ggsurvfit(
+    color = "red") +
+  add_confidence_interval() 
+```
+
+## Cox i praksis (sammenlignet med `KM`)
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+km.m1 <- survfit(Surv(dur, status) ~ udd, type = "kaplan-meier", data = df)
+
+km.m1 %>% 
+  ggsurvfit() +
+  add_confidence_interval()
+```
+
+## Cox i praksis (sammenlignet med `KM`)
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+km.m1 <- survfit(Surv(dur, status) ~ udd + aargang, type = "kaplan-meier", data = df)
+
+km.m1 %>% 
+  ggsurvfit() +
+  add_confidence_interval()
+```
+
+## Cox i praksis
+
+Hvis vi vil vide hvordan overlevelse varierer i henhold til en specifik covariat, kan vi stratificere analysen og stadig "kontrollere" for baggrundsvariable. $S(t)$ estimeres for hvert strata, som her er uddannelsesretning, kontrolleret for årgang. 
+
+```{r}
+#| echo: true
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+
+df <- read_csv(here::here("flytte.csv"))
+
+cox.m2 <- coxph(Surv(dur, status) ~ strata(udd) + aargang, method = "efron", data = df)
+
+cox.m2 %>% 
+  survfit2() %>%
+  ggsurvfit() +
+  add_confidence_interval()
+```
+
+
+## `*_join()` som forudsætning for dagens øvelse. 
+
+Hvor bekendte er i med at "joine" data? Skal vi køre en introduktion inden øvelserne?
+
+## Dagens øvelse 
+
+**Vi kigger nærmere på alder for fødsel af første barn** (inklusiv alderen på faren ved fødsel). 
+
+```{.r}
+load(".../forlob_06032023.rda")
+```
+
+Datasættet minder om øvelsesdata fra sidste gang. 
+
+Det adskiller sig ved at det
+
+1. er person-period data (indeholder alle obs. frem til hændelse eller datastop)
+
+2. hændelsesvariable skal dannes ud fra C_ANTBOERNF
+
+3. regionsvariablen er nu tidsvaerierende
+
+### Datamanagement
+
+1. Lav region (tidsvarierende variabel) om til en tidsinvariant variabel, der indikerer regionsbopælen i personens 18. leveår (forløbets start). Den skal ligne region18 fra sidste lektion. **hint:** `*_join()`
+
+2. Konstruer ud fra `C_ANTBOERNF` en event-variabel: Tag højde for hvordan `C_ANTBOERNF` er defineret af DST (læs dokumentation på DST Times... *Google*)
+    - Diskuter hvordan defininationen kan være et problem og hvordan vi kan løse problemt... **hvis det er et problem**?
+
+3. Dan en variabel, der er en indentikator for den sidste observation i `forløbet.` Den kan enten være en hændelse eller en censurering.
+    
+
+4. Reducér data til kun at indeholde den *sidste observation i* `forløbet`.
+
+### Analyse
+
+5. Lav en `KM` 
+    - Forskellige tests - analysér og diskutér
+    - Lav et KM plot
+  
+6. `Cox`-regression (bivariat)
+    - Bivariat med køn - analysér og diskutér hvad resultatet betyder
+  
+
+7. `Cox`-regression (multivariat)
+    - Indsæt køn, region (tidsinvariant) og uddannelse
+    - Fortolk resultaterne
+    - Plot kønnenes overlevelse med udgangspunkt i cox-regressionen
+
+
+
+
+
+
+
+
+
+
+
+
+
