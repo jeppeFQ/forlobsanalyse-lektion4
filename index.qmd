@@ -24,13 +24,11 @@ figur_tekst_str = 15
 
 ## Dagen program
 
-- Øvelsen til forelæsning 3. 
+- Øvelsen fra forelæsning 3
 
 - Data og data management
 
 - Cox-regression 
-
-- Analyse i praksis 
 
 - Øvelse
 
@@ -114,7 +112,7 @@ function stopTimer(timerId) {
 ::: {.column width="40%"}
 ### *Kompetancer*
 
--   Analyse af Cox-regression i R.
+-   Analyse med Cox-regression i R.
 
 :::
 <!--  ------------------------------------------->
@@ -204,7 +202,7 @@ read_excel("eksempel_data.xlsx") %>%
 
 ## Konstruktion af `event file`: Et eksempel
 
-Funktionerne `lag()` og `lead()` er centrale, når vi skal konstruere vores `event` variabel. Disse funktioner bruges til at hente data fra henholdsvis den foregående og den efterfølgende (observations)række i vores `dataframe`. Altså, `lag()` og `lead()` bruges til at "kalde" oplysninger fra henholdsvis før og efter en given observationsrække. 
+Funktionerne `lag()` og `lead()` er centrale, når vi skal konstruere vores `event` variabel. Disse funktioner bruges til at hente data fra henholdsvis den foregående og den efterfølgende (observations)række i vores `dataframe`. 
 
 > Spg.: *Hvordan løser det vores "problem" med at skabe vores event indikator?*
 
@@ -312,7 +310,15 @@ df.lagged %>%
 
 **Hvis vi nu vil definere begivenheden "fødsel af første barn" er udfordringen at "lokalisere" der hvor kvinden går fra 0 børn til 1 barn.**
 
-Jeg bruger her både `case_when()` og `if_else()` for illustrationen til begge funktinoer. 
+<div id="countdown-timer-001" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  02:00
+</div>
+
+::: {style="font-size: 50%;"}
+
+**Bemærk**: Jeg bruger her både `case_when()` og `if_else()` for at illustrere begge funktioner. 
+
+::: 
 
 ```{.r code-line-numbers="9-11"}
 library(tidyverse)
@@ -393,6 +399,9 @@ df.lagged %>%
 
 ---
 
+<div id="countdown-timer-002" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
+  02:00
+</div>
 
 ```{.r code-line-numbers="9,11,12,13"}
 library(tidyverse)
@@ -647,13 +656,13 @@ df.lagged %>%
 
 ## `Cox PH`: relevans og popularitet
 
-- Cox PH-modellen er `semi-parametrisk`, hvilket betyder, at vi ikke behøver at specificere den underliggende sandsynlighedstæthedsfunktion (**pdf**) for hændelsestiden. (Genbesøg noter og slides til lektion 2, for introduktion til relevante **pdf**.) Dette gør modellen fleksibel, da vi kun estimerer effekten af **kovariaterne på hazardraten**, mens **baseline hazard** forbliver ukendt.
+- Cox PH-modellen er `semi-parametrisk`, hvilket betyder, at vi ikke behøver at specificere den underliggende sandsynlighedstæthedsfunktion (**pdf**) for hændelsestiden. (Genbesøg noter og slides til lektion 2, for introduktion til relevante **pdf**.) Dette gør modellen fleksibel, da vi kun estimerer effekten af **kovariaterne på hazardraten**, mens **baseline hazard** forbliver *ukendt*.
 
-- Modellen er **robust** og kan anvendes til data. Uanset om den underliggende fordeling for hændelsestiderne er Weibull, eksponentiel, lognormal eller en anden form, vil Cox-modellen give gode **approksimationer**, så længe **den proportionale hazard-antagelse er opfyldt**.
+- Modellen er **robust** og kan anvendes uanset om den underliggende fordeling for hændelsestiderne er Weibull, eksponentiel, lognormal, (...). Cox-modellen vil give gode **approksimationer**, så længe **den proportionale hazard-antagelse er opfyldt**.
 
   - En væsentlig **forudsætning for modellen** er, at hazardraten for de forskellige grupper er proportionale over tid. Denne antagelse skal testes, da overtrædelser kan påvirke modellens anvendelighed.
 
-- En af de primøre fordele ved Cox-modellen er, at den nemt kan udvides til at inkludere **tidsvarierende kovariater**.
+- En af de primære fordele ved Cox-modellen er, at den nemt kan udvides til at inkludere **tidsvarierende kovariater**.
 
 ## Cox proportional hazard model med `fixed` covariater. 
 
@@ -671,7 +680,7 @@ hvor,
 
 - $\exp(\beta_{1} x_{1} + \dots + \beta_{k} x_{k})$ er den **multiplicative effekt** af de $k$ covariater på hazardraten.
 
-- Bemærk at der ikke er noget egentlig `intercept`, da den faste effekt, som et intercept normalt ville repræsentere, er integreret i $h_{0}(t)$. Ved estimering (via *partial likelihood*) udtrækkes koefficienterne $\beta$, mens $h_{0}(t)$ forbliver uspecificeret.
+- Bemærk at der ikke er noget egentlig *intercept*, da den effekt, som et intercept normalt ville repræsentere, er integreret i $h_{0}(t)$. Ved estimering (via *partial likelihood*) udtrækkes koefficienterne $\beta$, mens $h_{0}(t)$ forbliver uspecificeret.
 
 :::
 
@@ -683,7 +692,7 @@ $$
 h_{i}(t)=h_{0}(t) \times \exp(\beta_{1} x_{1} + \dots + \beta_{k} x_{k})
 $$
 
-Dermed kan vi udtrykke hazardfunktionen for en covariatvektor $\mathbf{X}$ som:
+Dermed kan vi udtrykke hazardfunktionen for en covariat-vektor, $\mathbf{X}$, som:
 
 $$
 h(t|\mathbf{X}) = h_{0}(t) \exp(\beta^{T}\mathbf{X})
@@ -804,6 +813,26 @@ $$
 
 $\hat{S}(t)$ er den "kontrollerede" $S(t)$, der bestemmer overlevelsesforløbet for en person med specifikke karakteristika, hvor effekten af disse karakteristika er "kontrolleret" for.
 
+---
+
+Altså, 
+
+- $h(t∣\mathbf{X})$ (hazardfunktionen) angiver ***den øjeblikkelige risiko*** for, at begivenheden indtræffer på et smalt tidsinterval omkring $t$, givet at personen har "overlevet" indtil $t$.
+
+- $S(t∣\mathbf{X})$ (overlevelsesfunktionen) angiver ***den kumulative sandsynlighed*** for, at personen ikke har oplevet begivenheden indtil tid $t$.
+
+Relationen, der ligger til grund for Cox-regressionen er: 
+
+$$
+S(t \mid \mathbf{X}) = \exp\left(-\int_0^t h(u \mid \mathbf{X}) \, du\right)
+$$
+
+1. *partiel likelihood* bruges til at estimere $\beta$ uden at specificere $h_{0}​(t)$ eksplicit.
+
+2. $h_{0}​(t)$ (og $S_{0}(t)$) estimeres typisk ved hjælp af *Breslow*-estimation.
+
+3. Når vi har estimeret $\beta$ og $S_{0}(t)$, kan vi beregne den justerede overlevelsesfunktion $S(t∣\mathbf{X})$ for en given person med covariatvektoren $\mathbf{X}$.
+
 ## Cox i praksis: baseret på `flytte.csv`.
 
 ```{r}
@@ -833,33 +862,6 @@ cox.m1
 ```
 
 **Hvad betyder proportionalitet ift. dette output?**
-
-::: {.incremental}
-
-- Vi kommer senere til at se nærmere på hvordan vi tester antagelsen om proportionalitet. 
-
-:::
-
-## Cox i praksis: faktor variable og `ratios`
-
-**Hvorfor vil vi gerne have kategorien med den største risiko som reference**?
-
-<div id="countdown-timer-6" data-duration="180" onclick="toggleTimer('countdown-timer-1')" style="font-size: 2em; color: #333; padding: 10px; cursor: pointer; display: inline-block;">
-  02:00
-</div>
-
-```{r}
-#| echo: true
-library(tidyverse)
-library(survival)
-library(ggsurvfit)
-
-df <- read_csv(here::here("flytte.csv"))
-
-cox.m1 <- coxph(Surv(dur, status) ~ fct_rev(factor(udd)) + fct_rev(factor(aargang)), method = "efron", data = df)
-
-cox.m1
-```
 
 ## Cox i praksis
 
