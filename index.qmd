@@ -1001,7 +1001,7 @@ Det adskiller sig ved at det
 7. `Cox`-regression (multivariat)
     - Indsæt køn, region (tidsinvariant) og uddannelse
     - Fortolk resultaterne
-    - Plot kønnenes overlevelse med udgangspunkt i cox-regressionen
+    - Plot kønnenes overlevelse med udgangspunkt i cox-regressionen 
 
 
 
